@@ -1,3 +1,5 @@
+mod services;
+
 use clap::{Arg, App};
 
 const FOR_COMMAND: &str = "for";
