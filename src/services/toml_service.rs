@@ -61,7 +61,7 @@ mod test {
 
         let res: Result<Value, TomlFileError> = toml_service.read_from_file(String::from("test_helpers/read_this.toml"));
 
-        assert_eq!(res.o, true);
+        assert_eq!(res.is_ok(), true);
     }
 
     #[test]
