@@ -1,8 +1,8 @@
 use std::fmt;
-
-use crate::services::file_service::{FileService, FileServiceTrait};
 use serde::de::DeserializeOwned;
 use serde::{Serialize};
+
+use crate::services::file_service::{FileService, FileServiceTrait};
 
 pub struct TomlFileError;
 
@@ -37,9 +37,9 @@ impl TomlFileServiceTrait for TomlFileService {
     }
 
     fn read_from_file<T>(&self, file_name: String) -> Result<T, TomlFileError> where T: DeserializeOwned {
-        let content = match &self.file_service.read_file_to_string(file_name) {
+        let content = match self.file_service.read_file_to_string(file_name) {
             Err(_) => return Err(TomlFileError),
-            Ok(c) => String::from(c)
+            Ok(c) => c
         };
 
         let res = match toml::from_str(&content) {
@@ -56,7 +56,7 @@ impl TomlFileServiceTrait for TomlFileService {
             Ok(c) => c
         };
 
-        let res= match &self.file_service.write_file_from_string(file_name, toml_str) {
+        let res= match self.file_service.write_file_from_string(file_name, toml_str) {
             Err(_) => return Err(TomlFileError),
             Ok(_) => Ok(())
         };
