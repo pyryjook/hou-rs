@@ -36,8 +36,8 @@ impl fmt::Debug for FileWriteError {
 
 pub trait FileServiceTrait {
     fn new() -> Self;
-    fn read_file_to_string(&self, file_name: String) -> Result<String, FileReadError>;
-    fn write_file_from_string(&self, file_name: String, content: String) -> Result<(), FileWriteError>;
+    fn read_file_to_string(&self, file_name: &String) -> Result<String, FileReadError>;
+    fn write_file_from_string(&self, file_name: &String, content: String) -> Result<(), FileWriteError>;
 }
 
 pub struct FileService;
@@ -46,8 +46,8 @@ impl FileServiceTrait for FileService {
     fn new() -> FileService {
         FileService
     }
-    fn read_file_to_string(&self, file_name: String) -> Result<String, FileReadError> {
-        let path = Path::new(&file_name);
+    fn read_file_to_string(&self, file_name: &String) -> Result<String, FileReadError> {
+        let path = Path::new(file_name);
 
         let mut file = match File::open(&path) {
             Err(_) => return Err(FileReadError),
@@ -63,8 +63,8 @@ impl FileServiceTrait for FileService {
         return Ok(file_content);
     }
 
-    fn write_file_from_string(&self, file_name: String, content: String) -> Result<(), FileWriteError> {
-        let path = Path::new(&file_name);
+    fn write_file_from_string(&self, file_name: &String, content: String) -> Result<(), FileWriteError> {
+        let path = Path::new(file_name);
 
         let mut file = match File::create(&path) {
             Err(_) => return Err(FileWriteError),
@@ -86,7 +86,7 @@ mod test {
     fn test_read_file_to_string() {
         let fs = FileService::new();
 
-        let res = fs.read_file_to_string(String::from("test_helpers/file.txt"));
+        let res = fs.read_file_to_string(&String::from("test_helpers/file.txt"));
 
         assert_eq!(res.is_ok(), true)
     }
@@ -94,7 +94,7 @@ mod test {
     fn test_read_file_to_string_error() {
         let fs = FileService::new();
 
-        let res = fs.read_file_to_string( String::from("non_existent/file.txt"));
+        let res = fs.read_file_to_string( &String::from("non_existent/file.txt"));
 
         assert_eq!(res.is_err(), true);
     }
@@ -103,7 +103,7 @@ mod test {
     fn test_write_file_to_string() {
         let fs = FileService::new();
 
-        let res = fs.write_file_from_string(String::from("test_helpers/write_file.txt"), String::from("this is a test"));
+        let res = fs.write_file_from_string(&String::from("test_helpers/write_file.txt"), String::from("this is a test"));
 
         assert_eq!(res.is_ok(), true)
     }
@@ -112,7 +112,7 @@ mod test {
     fn test_write_file_to_string_error() {
         let fs = FileService::new();
 
-        let res = fs.write_file_from_string(String::from("/write_file.txt"), String::from("this is a test"));
+        let res = fs.write_file_from_string(&String::from("/write_file.txt"), String::from("this is a test"));
 
         assert_eq!(res.is_err(), true)
     }

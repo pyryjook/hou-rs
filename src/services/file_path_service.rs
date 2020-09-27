@@ -1,28 +1,24 @@
 use std::{env, fmt};
-use crate::constants::{CONFIG_FILE_PATH, HOME_ENV_KEY};
+use snafu::{Snafu, ResultExt};
 
-pub struct FilePathError;
+use crate::constants::{HOME_ENV_KEY};
 
-impl fmt::Display for FilePathError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "An Error occurred when reading the file")
-    }
-}
-
-impl fmt::Debug for FilePathError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{ file: {}, line: {} }}", file!(), line!())
-    }
+#[derive(Debug, Snafu)]
+pub enum FilePathError {
+    #[snafu(display("Could not find env variable: {}", source))]
+    EnvError{
+        source: std::env::VarError,
+    },
 }
 
 pub struct FilePathService;
 
 impl FilePathService {
-    pub fn to_absolute(path: String) -> Result<String, FilePathError> {
+    pub fn absolute_path(path: &String) -> Result<String, FilePathError> {
         if !path.starts_with("~") {
-            return Ok(path)
+            return Ok(String::from(path))
         }
-        let home_path = env::var(HOME_ENV_KEY)?;
+        let home_path = env::var(HOME_ENV_KEY).context(EnvError)?;
 
         return Ok(format!("{}{}", home_path, path))
     }
@@ -33,12 +29,22 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_get_config_file_path() {
+    fn test_get_config_file_path_with_home() {
+        let path= "~/.hou-rs/config".to_string();
 
-        let res = FilePathService::to_absolute().unwrap();
+        let res = FilePathService::absolute_path(&path).unwrap();
 
-        assert_eq!(res.contains(CONFIG_FILE_PATH), true);
-        assert_eq!(res.len() > CONFIG_FILE_PATH.len(), true);
+        assert_eq!(res.contains(".hou-rs/config"), true);
+        assert_eq!(res.contains("Users"), true);
+    }
+
+    #[test]
+    fn test_get_config_file_path_with_absolute() {
+        let path= "path/to/.hou-rs/config".to_string();
+
+        let res = FilePathService::absolute_path(&path).unwrap();
+
+        assert_eq!(res == path, true);
     }
 
 }
