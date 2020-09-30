@@ -29,7 +29,6 @@ mod test {
         let res = FilePathService::absolute_path(&path).unwrap();
 
         assert_eq!(res.contains(".hou-rs/config"), true);
-        assert_eq!(res.contains("Users"), true);
     }
 
     #[test]
