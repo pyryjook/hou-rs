@@ -1,43 +1,18 @@
-
-use std::fmt;
 use std::fs::File;
 use std::path::Path;
 use std::io::{Read, Write};
+use snafu::ResultExt;
 
-pub struct FileReadError;
+use crate::domain::errors::toml_file::FileError;
+use crate::domain::errors::toml_file::ReadFile;
+use crate::domain::errors::toml_file::WriteFile;
 
-impl fmt::Display for FileReadError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "An Error occurred when reading the file")
-    }
-}
-
-impl fmt::Debug for FileReadError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{ file: {}, line: {} }}", file!(), line!())
-    }
-}
-
-pub struct FileWriteError;
-
-
-impl fmt::Display for FileWriteError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "An Error occurred when writing the file")
-    }
-}
-
-impl fmt::Debug for FileWriteError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{ file: {}, line: {} }}", file!(), line!())
-    }
-}
 
 
 pub trait FileServiceTrait {
     fn new() -> Self;
-    fn read_file_to_string(&self, file_name: &String) -> Result<String, FileReadError>;
-    fn write_file_from_string(&self, file_name: &String, content: String) -> Result<(), FileWriteError>;
+    fn read_file_to_string(&self, file_name: &String) -> Result<String, FileError>;
+    fn write_file_from_string(&self, file_name: &String, content: String) -> Result<(), FileError>;
 }
 
 pub struct FileService;
@@ -46,35 +21,24 @@ impl FileServiceTrait for FileService {
     fn new() -> FileService {
         FileService
     }
-    fn read_file_to_string(&self, file_name: &String) -> Result<String, FileReadError> {
+    fn read_file_to_string(&self, file_name: &String) -> Result<String, FileError> {
         let path = Path::new(file_name);
 
-        let mut file = match File::open(&path) {
-            Err(_) => return Err(FileReadError),
-            Ok(file) => file,
-        };
+        let mut file = File::open(&path).context(ReadFile {path: file_name})?;
 
         let mut file_content = String::new();
 
-        if let Err(_) = file.read_to_string(&mut file_content) {
-            return Err(FileReadError)
-        }
+        file.read_to_string(&mut file_content).context(ReadFile {path: file_name})?;
 
         return Ok(file_content);
     }
 
-    fn write_file_from_string(&self, file_name: &String, content: String) -> Result<(), FileWriteError> {
+    fn write_file_from_string(&self, file_name: &String, content: String) -> Result<(), FileError> {
         let path = Path::new(file_name);
 
-        let mut file = match File::create(&path) {
-            Err(_) => return Err(FileWriteError),
-            Ok(file) => file,
-        };
+        let mut file = File::create(&path).context(WriteFile {path: file_name})?;
 
-        match file.write_all(content.as_bytes()) {
-            Err(_) => return Err(FileWriteError),
-            Ok(_) => return Ok(()),
-        }
+        return Ok(file.write_all(content.as_bytes()).context(WriteFile {path: file_name})?);
     }
 }
 

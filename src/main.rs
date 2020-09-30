@@ -77,15 +77,6 @@ fn main() {
     println!("{}", result)
 }
 
-
-fn handle_for(project_name: Option<&str>) -> String {
-    if let Some(name) = project_name {
-        return format!("{}", name)
-    }
-
-    return String::new()
-}
-
 fn handle_worked_on(task: Option<&str>, time: Option<&str>) -> String {
     if let (Some(tsk), Some(tme)) = (task, time) {
         return format!("Marked {} to {}", tme, tsk)

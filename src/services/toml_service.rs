@@ -1,18 +1,15 @@
-use std::fmt;
 use serde::de::DeserializeOwned;
 use serde::{Serialize};
-use snafu::Snafu;
+use snafu::{ResultExt, IntoError};
 
 use crate::services::file_service::{FileService, FileServiceTrait};
-
-#[derive(Debug, Snafu)]
-pub struct TomlFileError;
+use crate::domain::errors::toml_file::{FileError, SerializeToml, DeserializeToml};
 
 
 pub trait TomlFileServiceTrait {
     fn new(file_service: FileService) -> Self;
-    fn read_from_file<T>(&self, file: &String) -> Result<T, TomlFileError> where T: DeserializeOwned;
-    fn save_to_file<T>(&self, config: T, file_name: &String) -> Result<(), TomlFileError> where T: Serialize;
+    fn read_from_file<T>(&self, file: &String) -> Result<T, FileError> where T: DeserializeOwned;
+    fn save_to_file<T>(&self, config: T, file_name: &String) -> Result<(), FileError> where T: Serialize;
 }
 
 pub struct TomlFileService {
@@ -26,32 +23,16 @@ impl TomlFileServiceTrait for TomlFileService {
         }
     }
 
-    fn read_from_file<T>(&self, file_name: &String) -> Result<T, TomlFileError> where T: DeserializeOwned {
-        let content = match self.file_service.read_file_to_string(file_name) {
-            Err(_) => return Err(TomlFileError),
-            Ok(c) => c
-        };
+    fn read_from_file<T>(&self, file_name: &String) -> Result<T, FileError> where T: DeserializeOwned {
+        let content = self.file_service.read_file_to_string(file_name)?;
 
-        let res = match toml::from_str(&content) {
-            Err(_) => Err(TomlFileError),
-            Ok(toml_content) => Ok(toml_content)
-        };
-
-        return res
+        return toml::from_str(&content).map_err(|e| DeserializeToml { path: file_name }.into_error(e));
     }
 
-    fn save_to_file<T>(&self, config: T, file_name: &String) -> Result<(), TomlFileError> where T: Serialize {
-        let toml_str = match toml::to_string(&config) {
-            Err(_) => return Err(TomlFileError),
-            Ok(c) => c
-        };
+    fn save_to_file<T>(&self, config: T, file_name: &String) -> Result<(), FileError> where T: Serialize {
+        let toml_str = toml::to_string(&config).context(SerializeToml{path: file_name})?;
 
-        let res= match self.file_service.write_file_from_string(file_name, toml_str) {
-            Err(_) => return Err(TomlFileError),
-            Ok(_) => Ok(())
-        };
-
-        return res
+        return Ok(self.file_service.write_file_from_string(file_name, toml_str)?);
     }
 }
 
@@ -74,11 +55,19 @@ mod test {
     }
 
     #[test]
-    fn test_read_from_file_content() {
+    fn test_read_from_file_is_ok() {
         let toml_service = TomlFileService::new( FileService::new() );
-        let res: Result<MockConfig, TomlFileError>  = toml_service.read_from_file(&String::from("test_helpers/read_this.toml"));
+        let res: Result<MockConfig, FileError>  = toml_service.read_from_file(&String::from("test_helpers/read_this.toml"));
 
         assert_eq!(res.is_ok(), true);
+    }
+
+    #[test]
+    fn test_read_from_file_is_err() {
+        let toml_service = TomlFileService::new( FileService::new() );
+        let res: Result<MockConfig, FileError>  = toml_service.read_from_file(&String::from("/read_this.toml"));
+
+        assert_eq!(res.is_err(), true);
     }
 
     #[test]
@@ -90,5 +79,16 @@ mod test {
         let res = toml_service.save_to_file(config, &String::from("test_helpers/file.toml"));
 
         assert_eq!(res.is_ok(), true);
+    }
+
+    #[test]
+    fn test_write_to_file_error() {
+        let config = MockConfig{ title: "foo".to_string() };
+
+        let toml_service = TomlFileService::new( FileService::new() );
+
+        let res = toml_service.save_to_file(config, &String::from("/file.toml"));
+
+        assert_eq!(res.is_err(), true);
     }
 }
