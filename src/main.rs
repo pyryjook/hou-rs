@@ -1,6 +1,11 @@
 mod services;
+mod command_handlers;
+mod constants;
+mod builders;
+mod domain;
 
 use clap::{Arg, App};
+use crate::command_handlers::for_command;
 
 const FOR_COMMAND: &str = "for";
 const WORKED_ON_COMMAND: &str = "worked-on";
@@ -52,7 +57,7 @@ fn main() {
 
     let result: String = match matches.subcommand() {
         (FOR_COMMAND, Some(register_project)) =>
-            handle_for(
+            for_command::handle(
                 register_project.value_of(PROJECT_NAME_ARG)
             ),
         (WORKED_ON_COMMAND, Some(worked)) =>
@@ -70,15 +75,6 @@ fn main() {
 
 
     println!("{}", result)
-}
-
-
-fn handle_for(project_name: Option<&str>) -> String {
-    if let Some(name) = project_name {
-        return format!("{}", name)
-    }
-
-    return String::new()
 }
 
 fn handle_worked_on(task: Option<&str>, time: Option<&str>) -> String {
