@@ -28,7 +28,10 @@ mod test {
 
         let res = FilePathService::absolute_path(&path).unwrap();
 
-        assert_eq!(res.contains(".hou-rs/config"), true);
+        let expected = ".hou-rs/config";
+
+        assert_eq!(res.contains(expected), true);
+        assert_eq!(res.len() > expected.len(), true);
     }
 
     #[test]
