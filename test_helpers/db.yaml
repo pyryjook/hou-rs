@@ -1,0 +1,9 @@
+---
+billable: []
+projects:
+  foo:
+    name: Foo
+    unit_price: 80
+    unit: day
+    tasks:
+      - development
