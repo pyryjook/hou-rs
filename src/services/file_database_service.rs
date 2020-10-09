@@ -1,12 +1,13 @@
 use rustbreak::{FileDatabase, Database, RustbreakError};
-use rustbreak::deser::Yaml;
+use rustbreak::deser::{Yaml, Bincode};
 use rustbreak::backend::FileBackend;
 use std::collections::{HashMap, HashSet};
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Date, Datelike};
 use serde::{Serialize, Deserialize};
 
 type DB = FileDatabase<ProjectData, Yaml>;
-type Money = u32;
+type Money = u16;
+type Quantity = f32;
 
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -20,8 +21,15 @@ enum BillableUnit {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct BillableEntry {
     project_id: String,
-    amount: Money,
+    quantity: Quantity,
     date: String
+}
+
+#[derive(Debug)]
+struct Billable {
+    project_id: String,
+    quantity: Quantity,
+    date: DateTime<Local>
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -68,7 +76,6 @@ impl ProjectDataService {
         });
 
         self.db.save();
-        return ()
     }
 
     pub fn add_task(&self, project_name: String, task_name: String) {
@@ -81,6 +88,60 @@ impl ProjectDataService {
         });
 
         self.db.save();
+    }
+
+
+    pub fn add_billable_entry(&self, project_name: String, task_name: String, quantity: Quantity, date: Option<Date<Local>>) -> Result<(), RustbreakError> {
+        let project_id = self.get_project_id(&project_name);
+        let is_known_task = self.task_exists(&project_id, &task_name)?;
+        if !is_known_task {
+            return Err(RustbreakError::Poison)
+        }
+        let date_str = match date {
+            None => Local::now().to_string(),
+            Some(d) => d.to_string()
+        };
+
+        let billable = BillableEntry{
+            project_id,
+            quantity,
+            date: date_str
+        };
+
+        let _ = self.db.write(|db| {
+            db.billable.insert(db.billable.len(), billable)
+        });
+
+        self.db.save();
+
+        return Ok(());
+    }
+
+    pub fn get_monthly_billing(&self, project_name: String, date: Option<Date<Local>>) -> Result<Vec<Billable>, RustbreakError> {
+        let project_id = self.get_project_id(&project_name);
+        let month = match date {
+            None => Local::now().month(),
+            Some(d) => d.month()
+        };
+
+        return self.db.read( |db| {
+           db.billable.clone()
+               .into_iter()
+               .filter_map(|e| Some(Billable{ date: e.date.parse::<DateTime<Local>>().ok()?, project_id: e.project_id, quantity: e.quantity }))
+               .filter(|e| e.project_id == project_id)
+               .filter(|e| e.date.month() == month)
+               .collect()
+        });
+    }
+
+    fn task_exists(&self, project_id: &String, task_name: &String) -> Result<bool, RustbreakError> {
+        return self.db.read(|db| {
+            if let Some(p) = db.projects.get(project_id) {
+                return p.tasks.contains(task_name);
+            }
+
+            return false
+        });
     }
 
     fn get_project_id(&self, project_name: &String) -> String {
@@ -104,5 +165,19 @@ mod test {
     fn test_add_task() {
         let service = ProjectDataService::new("test_helpers/db.yaml".to_string());
         service.add_task("Foo".to_string(), "development".to_string())
+    }
+
+    #[test]
+    fn test_add_billable_entry() {
+        let service = ProjectDataService::new("test_helpers/db.yaml".to_string());
+        let _ = service.add_billable_entry("Foo".to_string(), "development".to_string(), 8.0, None);
+    }
+
+    #[test]
+    fn test_get_monthly_billing() {
+        let service = ProjectDataService::new("test_helpers/db.yaml".to_string());
+        let res = service.get_monthly_billing("Foo".to_string(),  None).unwrap();
+
+        println!("{:?}", res)
     }
 }
