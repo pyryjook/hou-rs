@@ -12,3 +12,5 @@ toml = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0.116"
 snafu = "0.6.9"
+rustbreak = { version = "2",  features = ["yaml_enc", "bin_enc"] }
+chrono = "0.4"
