@@ -3,19 +3,14 @@ use rustbreak::deser::{Yaml};
 use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Local, Datelike};
 use serde::{Serialize, Deserialize};
+use snafu::{ResultExt, IntoError, OptionExt};
+
+use crate::domain::entities::{Billable, Project, BillableUnit};
+use crate::domain::objects::{Quantity, Money, Task};
+use crate::domain::errors::project_data_repository::ProjectDataRepositoryError;
+use crate::domain::errors::project_data_repository::ProjectDataRepositoryError::{ReadFailed, WriteFailed, SaveToFile, MalformedDateString, NoneError};
 
 type DB = FileDatabase<ProjectData, Yaml>;
-type Money = u16;
-type Quantity = f32;
-
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-enum BillableUnit {
-    #[serde(rename = "day")]
-    Day,
-    #[serde(rename = "hour")]
-    Hour
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 struct BillableEntry {
@@ -25,46 +20,30 @@ struct BillableEntry {
     date: String
 }
 
-#[derive(Debug, PartialEq)]
-struct Billable {
-    project_id: String,
-    task: String,
-    quantity: Quantity,
-    date: DateTime<Local>
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-struct Project {
-    name: String,
-    unit_price: Money,
-    unit: BillableUnit,
-    tasks: HashSet<String>
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct ProjectData {
     billable: Vec<BillableEntry>,
     projects: HashMap<String, Project>
 }
 
-struct ProjectDataService {
+pub struct ProjectDataRepository {
     db: DB
 }
 
-impl ProjectDataService {
-    pub fn new(path: String) -> ProjectDataService {
+impl ProjectDataRepository {
+    pub fn new(path: String) -> ProjectDataRepository {
         let db: DB = FileDatabase::create_at_path(path, ProjectData {
             billable: vec![],
             projects: HashMap::new(),
         }).unwrap();
         let _ = db.load();
 
-        return ProjectDataService {
+        return ProjectDataRepository {
             db
         }
     }
 
-    pub fn add_project(&self, project_name: &String, unit_price: Money, unit: BillableUnit) {
+    pub fn add_project(&self, project_name: &String, unit_price: Money, unit: BillableUnit) -> Result<(), ProjectDataRepositoryError> {
         let project_id = self.get_project_id(&project_name);
         let project = Project{
             unit_price,
@@ -74,26 +53,30 @@ impl ProjectDataService {
         };
         let _ = self.db.write(|db| {
             db.projects.insert(project_id, project)
-        });
+        }).map_err(|e| WriteFailed { source: e })?;
+
+        return Ok(());
     }
 
-    pub fn add_task(&self, project_name: &String, task_name: &String) {
+    pub fn add_task(&self, project_name: &String, task_name: &Task) -> Result<(), ProjectDataRepositoryError> {
         let project_id = self.get_project_id(&project_name);
         let _ = self.db.write(|db| {
             if let Some(p) = db.projects.get_mut(&project_id) {
                 return p.tasks.insert(task_name.to_string())
             }
             return false
-        });
+        }).map_err(|e| WriteFailed { source: e })?;
+
+        return Ok(());
     }
 
 
-    pub fn add_billable_entry(&self, project_name: &String, task: &String, quantity: Quantity, date: Option<DateTime<Local>>) -> Result<(), RustbreakError> {
+    pub fn add_billable_entry(&self, project_name: &String, task: &String, quantity: Quantity, date: Option<DateTime<Local>>) -> Result<(), ProjectDataRepositoryError> {
         let project_id = self.get_project_id(&project_name);
-        let is_known_task = self.task_exists(&project_id, &task)?;
+        let is_known_task = self.task_exists(&project_id, &task).map_err(|e| ReadFailed { source: e })?;
 
         if !is_known_task {
-            return Err(RustbreakError::Poison)
+            return Err(ProjectDataRepositoryError::UnexpectedTask { task: task.to_string() })
         }
 
         let date_str = match date {
@@ -115,7 +98,7 @@ impl ProjectDataService {
         return Ok(());
     }
 
-    pub fn get_monthly_billing(&self, project_name: &String, date: Option<DateTime<Local>>) -> Result<Vec<Billable>, RustbreakError> {
+    pub fn get_monthly_billing(&self, project_name: &String, date: Option<DateTime<Local>>) -> Result<Vec<Billable>, ProjectDataRepositoryError> {
         let project_id = self.get_project_id(&project_name);
         let month = match date {
             None => Local::now().month(),
@@ -123,17 +106,17 @@ impl ProjectDataService {
         };
 
         return self.db.read( |db| {
-           db.billable.clone()
+           Ok(db.billable.clone()
                .into_iter()
-               .filter_map(|e| Some(Billable{ date: e.date.parse::<DateTime<Local>>().ok()?, project_id: e.project_id, quantity: e.quantity, task: e.task }))
+               .filter_map(|e| Some(Billable{ date: e.date.parse::<DateTime<Local>>().map_err(move |_| MalformedDateString).ok()?, project_id: e.project_id, quantity: e.quantity, task: e.task }))
                .filter(|e| e.project_id == project_id)
                .filter(|e| e.date.month() == month)
-               .collect()
-        });
+               .collect())
+        }).map_err(|e| ReadFailed { source: e })?;
     }
 
-    pub fn write_to_file(&self) -> Result<(), RustbreakError> {
-        self.db.save()
+    pub fn write_to_file(&self) -> Result<(), ProjectDataRepositoryError> {
+        self.db.save().map_err(|e| SaveToFile { source: e })
     }
 
     fn task_exists(&self, project_id: &String, task_name: &String) -> Result<bool, RustbreakError> {
@@ -155,7 +138,7 @@ impl ProjectDataService {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::services::file_database_service::BillableUnit::Day;
+    use crate::domain::entities::BillableUnit::Day;
 
     const DB_FILE: &str = "test_helpers/db.yaml";
     const MOCK_PROJECT_NAME: &str = "Foo";
@@ -173,7 +156,7 @@ mod test {
             unit: Day,
             tasks: HashSet::new()
         };
-        let service = ProjectDataService::new(DB_FILE.to_string());
+        let service = ProjectDataRepository::new(DB_FILE.to_string());
         service.add_project(project_name, 80, Day);
 
         let _ = service.db.read(|db| {
@@ -196,7 +179,7 @@ mod test {
             unit: Day,
             tasks: set
         };
-        let service = ProjectDataService::new(DB_FILE.to_string());
+        let service = ProjectDataRepository::new(DB_FILE.to_string());
         service.add_project(project_name, 80, Day);
         service.add_task(project_name, task_name);
 
@@ -218,7 +201,7 @@ mod test {
             task: expected_task.to_string(),
             date: expected_date.to_string()
         };
-        let service = ProjectDataService::new(DB_FILE.to_string());
+        let service = ProjectDataRepository::new(DB_FILE.to_string());
         service.add_project(project_name, 80, Day);
         service.add_task(project_name, expected_task);
 
@@ -236,7 +219,7 @@ mod test {
         let task_name = &EXPECTED_TASK_NAME.to_string();
 
         let expected_date_str_substring = Local::now().to_string()[..10].to_string();
-        let service = ProjectDataService::new(DB_FILE.to_string());
+        let service = ProjectDataRepository::new(DB_FILE.to_string());
         service.add_project(project_name, 80, Day);
         service.add_task(project_name, task_name);
 
@@ -255,7 +238,7 @@ mod test {
         let expected_date1 = "2020-10-11 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
         let expected_date2 = "2020-10-12 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
         let expected_date3 = "2020-09-12 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
-        let service = ProjectDataService::new(DB_FILE.to_string());
+        let service = ProjectDataRepository::new(DB_FILE.to_string());
 
 
         service.add_project(project_name, 80, Day);
@@ -282,7 +265,7 @@ mod test {
         let expected_date3 = "2020-09-12 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
 
         let taget_date =  "2020-09-10 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
-        let service = ProjectDataService::new(DB_FILE.to_string());
+        let service = ProjectDataRepository::new(DB_FILE.to_string());
 
 
         service.add_project(project_name, 80, Day);

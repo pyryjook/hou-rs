@@ -1,20 +1,13 @@
-mod services;
-mod command_handlers;
-mod constants;
 mod builders;
+mod constants;
 mod domain;
+mod handlers;
+mod repositories;
+mod services;
 
 use clap::{Arg, App};
-use crate::command_handlers::for_command;
-
-const FOR_COMMAND: &str = "for";
-const WORKED_ON_COMMAND: &str = "worked-on";
-const INVOICE_COMMAND: &str = "invoice";
-
-const PROJECT_NAME_ARG: &str = "project_name";
-const TASK_ARG: &str = "task";
-const TIME_ARG: &str = "time";
-const DATE_ARG: &str = "date";
+use crate::constants::{FOR_COMMAND, PROJECT_NAME_ARG, WORKED_ON_COMMAND, TASK_ARG, TIME_ARG, DATE_ARG, INVOICE_COMMAND};
+use crate::handlers::for_command;
 
 fn main() {
     let matches = App::new("Hours: Freelance billing app for Lex Office")
