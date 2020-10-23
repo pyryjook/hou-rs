@@ -1,0 +1,13 @@
+---
+billable:
+  - project_id: project
+    task: Task
+    quantity: 5.0
+    date: "2020-10-23 23:01:25.466883 +03:00"
+projects:
+  project:
+    name: Project
+    unit_price: 80
+    unit: day
+    tasks:
+      - Task

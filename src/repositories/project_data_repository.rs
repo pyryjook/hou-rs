@@ -8,7 +8,7 @@ use snafu::{ResultExt, IntoError, OptionExt};
 use crate::domain::entities::{Billable, Project, BillableUnit};
 use crate::domain::objects::{Quantity, Money, Task};
 use crate::domain::errors::project_data_repository::ProjectDataRepositoryError;
-use crate::domain::errors::project_data_repository::ProjectDataRepositoryError::{ReadFailed, WriteFailed, SaveToFile, MalformedDateString, NoneError};
+use crate::domain::errors::project_data_repository::{ReadFailed, WriteFailed, SaveToFile, MalformedDateString, NoneError, UnexpectedTask};
 
 type DB = FileDatabase<ProjectData, Yaml>;
 
@@ -53,7 +53,7 @@ impl ProjectDataRepository {
         };
         let _ = self.db.write(|db| {
             db.projects.insert(project_id, project)
-        }).map_err(|e| WriteFailed { source: e })?;
+        }).map_err(|e| WriteFailed {  }.into_error(e))?;
 
         return Ok(());
     }
@@ -62,10 +62,10 @@ impl ProjectDataRepository {
         let project_id = self.get_project_id(&project_name);
         let _ = self.db.write(|db| {
             if let Some(p) = db.projects.get_mut(&project_id) {
-                return p.tasks.insert(task_name.to_string())
+                p.tasks.insert(task_name.to_string());
             }
             return false
-        }).map_err(|e| WriteFailed { source: e })?;
+        }).map_err(|e| WriteFailed { }.into_error(e))?;
 
         return Ok(());
     }
@@ -73,10 +73,10 @@ impl ProjectDataRepository {
 
     pub fn add_billable_entry(&self, project_name: &String, task: &String, quantity: Quantity, date: Option<DateTime<Local>>) -> Result<(), ProjectDataRepositoryError> {
         let project_id = self.get_project_id(&project_name);
-        let is_known_task = self.task_exists(&project_id, &task).map_err(|e| ReadFailed { source: e })?;
+        let is_known_task = self.task_exists(&project_id, &task).map_err(|e| ReadFailed { }.into_error(e))?;
 
         if !is_known_task {
-            return Err(ProjectDataRepositoryError::UnexpectedTask { task: task.to_string() })
+            return Err(UnexpectedTask { task: task.to_string() }.build());
         }
 
         let date_str = match date {
@@ -112,11 +112,11 @@ impl ProjectDataRepository {
                .filter(|e| e.project_id == project_id)
                .filter(|e| e.date.month() == month)
                .collect())
-        }).map_err(|e| ReadFailed { source: e })?;
+        }).map_err(|e| ReadFailed { }.into_error(e))?;
     }
 
     pub fn write_to_file(&self) -> Result<(), ProjectDataRepositoryError> {
-        self.db.save().map_err(|e| SaveToFile { source: e })
+        self.db.save().map_err(|e| SaveToFile { }.into_error(e))
     }
 
     fn task_exists(&self, project_id: &String, task_name: &String) -> Result<bool, RustbreakError> {
