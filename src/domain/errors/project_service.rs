@@ -6,11 +6,16 @@ use crate::domain::errors::project_data_repository::ProjectDataRepositoryError;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub enum BillableServiceError {
-    #[snafu(display("Could not add new billable entry: {}, {}", project_name, task))]
-    NewEntry {
+pub enum ProjectServiceError {
+    #[snafu(display("Could not add new task: {}, {}", project_name, task))]
+    AddTask {
         project_name: String,
         task: String,
+        source: ProjectDataRepositoryError
+    },
+    #[snafu(display("Could not add project: {}", project_name))]
+    AddProject {
+        project_name: String,
         source: ProjectDataRepositoryError
     }
 }
