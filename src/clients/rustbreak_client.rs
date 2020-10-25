@@ -7,8 +7,8 @@ use snafu::{ResultExt, IntoError, OptionExt};
 
 use crate::domain::entities::{Billable, Project, BillableUnit};
 use crate::domain::objects::{Quantity, Money, Task};
-use crate::domain::errors::project_data_repository::ProjectDataRepositoryError;
-use crate::domain::errors::project_data_repository::{ReadFailed, WriteFailed, SaveToFile, MalformedDateString, NoneError, UnexpectedTask};
+use crate::domain::errors::rustbreak_client::RustbreakClientError;
+use crate::domain::errors::rustbreak_client::{ReadFailed, WriteFailed, SaveToFile, MalformedDateString, NoneError, UnexpectedTask};
 
 type DB = FileDatabase<ProjectData, Yaml>;
 
@@ -26,24 +26,24 @@ struct ProjectData {
     projects: HashMap<String, Project>
 }
 
-pub struct ProjectDataRepository {
+pub struct ProjectDataClient {
     db: DB
 }
 
-impl ProjectDataRepository {
-    pub fn new(path: String) -> ProjectDataRepository {
+impl ProjectDataClient {
+    pub fn new(path: String) -> ProjectDataClient {
         let db: DB = FileDatabase::create_at_path(path, ProjectData {
             billable: vec![],
             projects: HashMap::new(),
         }).unwrap();
         let _ = db.load();
 
-        return ProjectDataRepository {
+        return ProjectDataClient {
             db
         }
     }
 
-    pub fn add_project(&self, project_name: &String, unit_price: Money, unit: BillableUnit) -> Result<(), ProjectDataRepositoryError> {
+    pub fn add_project(&self, project_name: &String, unit_price: Money, unit: BillableUnit) -> Result<(), RustbreakClientError> {
         let project_id = self.get_project_id(&project_name);
         let project = Project{
             unit_price,
@@ -58,7 +58,7 @@ impl ProjectDataRepository {
         return Ok(());
     }
 
-    pub fn add_task(&self, project_name: &String, task_name: &Task) -> Result<(), ProjectDataRepositoryError> {
+    pub fn add_task(&self, project_name: &String, task_name: &Task) -> Result<(), RustbreakClientError> {
         let project_id = self.get_project_id(&project_name);
         let _ = self.db.write(|db| {
             if let Some(p) = db.projects.get_mut(&project_id) {
@@ -71,7 +71,7 @@ impl ProjectDataRepository {
     }
 
 
-    pub fn add_billable_entry(&self, project_name: &String, task: &String, quantity: Quantity, date: Option<DateTime<Local>>) -> Result<(), ProjectDataRepositoryError> {
+    pub fn add_billable_entry(&self, project_name: &String, task: &String, quantity: Quantity, date: Option<DateTime<Local>>) -> Result<(), RustbreakClientError> {
         let project_id = self.get_project_id(&project_name);
         let is_known_task = self.task_exists(&project_id, &task).map_err(|e| ReadFailed { }.into_error(e))?;
 
@@ -84,7 +84,7 @@ impl ProjectDataRepository {
             Some(d) => d.to_string()
         };
 
-        let billable = BillableEntry{
+        let billable = BillableEntry {
             project_id,
             task: task.to_string(),
             quantity,
@@ -98,7 +98,7 @@ impl ProjectDataRepository {
         return Ok(());
     }
 
-    pub fn get_monthly_billing(&self, project_name: &String, date: Option<DateTime<Local>>) -> Result<Vec<Billable>, ProjectDataRepositoryError> {
+    pub fn get_monthly_billing(&self, project_name: &String, date: Option<DateTime<Local>>) -> Result<Vec<Billable>, RustbreakClientError> {
         let project_id = self.get_project_id(&project_name);
         let month = match date {
             None => Local::now().month(),
@@ -115,7 +115,7 @@ impl ProjectDataRepository {
         }).map_err(|e| ReadFailed { }.into_error(e))?;
     }
 
-    pub fn write_to_file(&self) -> Result<(), ProjectDataRepositoryError> {
+    pub fn write_to_file(&self) -> Result<(), RustbreakClientError> {
         self.db.save().map_err(|e| SaveToFile { }.into_error(e))
     }
 
@@ -156,10 +156,10 @@ mod test {
             unit: Day,
             tasks: HashSet::new()
         };
-        let service = ProjectDataRepository::new(DB_FILE.to_string());
-        service.add_project(project_name, 80, Day);
+        let client = ProjectDataClient::new(DB_FILE.to_string());
+        client.add_project(project_name, 80, Day);
 
-        let _ = service.db.read(|db| {
+        let _ = client.db.read(|db| {
             assert_eq!(db.projects.get(MOCK_PROJECT_ID), Some(&expected))
         });
 
@@ -179,11 +179,12 @@ mod test {
             unit: Day,
             tasks: set
         };
-        let service = ProjectDataRepository::new(DB_FILE.to_string());
-        service.add_project(project_name, 80, Day);
-        service.add_task(project_name, task_name);
 
-        let _ = service.db.read(|db| {
+        let client = ProjectDataClient::new(DB_FILE.to_string());
+        client.add_project(project_name, 80, Day);
+        client.add_task(project_name, task_name);
+
+        let _ = client.db.read(|db| {
             assert_eq!(db.projects.get(MOCK_PROJECT_ID), Some(&expected))
         });
     }
@@ -201,14 +202,15 @@ mod test {
             task: expected_task.to_string(),
             date: expected_date.to_string()
         };
-        let service = ProjectDataRepository::new(DB_FILE.to_string());
-        service.add_project(project_name, 80, Day);
-        service.add_task(project_name, expected_task);
 
-        let _ = service.add_billable_entry(project_name, expected_task, 8.0, Some(expected_date));
-        let _ = service.add_billable_entry(project_name, unexpected_task, 8.0, Some(expected_date));
+        let client = ProjectDataClient::new(DB_FILE.to_string());
+        client.add_project(project_name, 80, Day);
+        client.add_task(project_name, expected_task);
 
-        let _ = service.db.read(|db| {
+        let _ = client.add_billable_entry(project_name, expected_task, 8.0, Some(expected_date));
+        let _ = client.add_billable_entry(project_name, unexpected_task, 8.0, Some(expected_date));
+
+        let _ = client.db.read(|db| {
             assert_eq!(db.billable[0], expected);
             assert_eq!(db.billable.len(), 1);
         });
@@ -219,13 +221,14 @@ mod test {
         let task_name = &EXPECTED_TASK_NAME.to_string();
 
         let expected_date_str_substring = Local::now().to_string()[..10].to_string();
-        let service = ProjectDataRepository::new(DB_FILE.to_string());
-        service.add_project(project_name, 80, Day);
-        service.add_task(project_name, task_name);
 
-        let _ = service.add_billable_entry(project_name, task_name, 8.0, None);
+        let client = ProjectDataClient::new(DB_FILE.to_string());
+        client.add_project(project_name, 80, Day);
+        client.add_task(project_name, task_name);
 
-        let _ = service.db.read(|db| {
+        let _ = client.add_billable_entry(project_name, task_name, 8.0, None);
+
+        let _ = client.db.read(|db| {
             assert_eq!(db.billable[0].date.starts_with(&expected_date_str_substring), true)
         });
     }
@@ -238,17 +241,18 @@ mod test {
         let expected_date1 = "2020-10-11 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
         let expected_date2 = "2020-10-12 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
         let expected_date3 = "2020-09-12 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
-        let service = ProjectDataRepository::new(DB_FILE.to_string());
+
+        let client = ProjectDataClient::new(DB_FILE.to_string());
 
 
-        service.add_project(project_name, 80, Day);
-        service.add_task(project_name, task_name);
+        client.add_project(project_name, 80, Day);
+        client.add_task(project_name, task_name);
 
-        let _ = service.add_billable_entry(project_name, task_name, 8.0, Some(expected_date1));
-        let _ = service.add_billable_entry(project_name, task_name, 7.0, Some(expected_date2));
-        let _ = service.add_billable_entry(project_name, task_name, 1.0, Some(expected_date3));
+        let _ = client.add_billable_entry(project_name, task_name, 8.0, Some(expected_date1));
+        let _ = client.add_billable_entry(project_name, task_name, 7.0, Some(expected_date2));
+        let _ = client.add_billable_entry(project_name, task_name, 1.0, Some(expected_date3));
 
-        let res = service.get_monthly_billing(project_name,  None).unwrap();
+        let res = client.get_monthly_billing(project_name,  None).unwrap();
 
         assert_eq!(res.len(), 2);
         assert_eq!(res[0], Billable { project_id: MOCK_PROJECT_ID.to_string(), task: task_name.to_string(), quantity: 8.0, date: "2020-10-11T22:09:24.269707+02:00".parse::<DateTime<Local>>().unwrap() });
@@ -264,21 +268,21 @@ mod test {
         let expected_date2 = "2020-10-12 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
         let expected_date3 = "2020-09-12 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
 
-        let taget_date =  "2020-09-10 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
-        let service = ProjectDataRepository::new(DB_FILE.to_string());
+        let target_date = "2020-09-10 22:09:24.269707 +02:00".parse::<DateTime<Local>>().unwrap();
 
+        let client = ProjectDataClient::new(DB_FILE.to_string());
 
-        service.add_project(project_name, 80, Day);
-        service.add_task(project_name, task_name);
+        client.add_project(project_name, 80, Day);
+        client.add_task(project_name, task_name);
 
-        let _ = service.add_billable_entry(project_name, task_name, 8.0, Some(expected_date1));
-        let _ = service.add_billable_entry(project_name, task_name, 7.0, Some(expected_date2));
-        let _ = service.add_billable_entry(project_name, task_name, 1.0, Some(expected_date3));
+        let _ = client.add_billable_entry(project_name, task_name, 8.0, Some(expected_date1));
+        let _ = client.add_billable_entry(project_name, task_name, 7.0, Some(expected_date2));
+        let _ = client.add_billable_entry(project_name, task_name, 1.0, Some(expected_date3));
 
-        let res = service.get_monthly_billing(project_name,  Some(taget_date)).unwrap();
+        let res = client.get_monthly_billing(project_name,  Some(target_date)).unwrap();
 
 
         assert_eq!(res.len(), 1);
-        assert_eq!(res[0], Billable { project_id: MOCK_PROJECT_ID.to_string(), task: task_name.to_string(), quantity: 1.0, date: expected_date3 });
+        assert_eq!(res[0], Billable { project: MOCK_PROJECT_ID.to_string(), task: task_name.to_string(), quantity: 1.0, date: expected_date3 });
     }
 }

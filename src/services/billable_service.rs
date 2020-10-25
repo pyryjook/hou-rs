@@ -3,7 +3,7 @@ use snafu::{ResultExt, IntoError};
 
 use crate::repositories::project_data_repository::ProjectDataRepository;
 use crate::domain::objects::{Quantity, Money, Task};
-use crate::domain::errors::billable_service::{NewEntry, BillableServiceError};
+use crate::domain::errors::billable_repository::{NewEntry, BillableRepositoryError};
 use crate::domain::entities::BillableUnit;
 
 pub struct BillableService {
@@ -17,7 +17,7 @@ impl BillableService {
         }
     }
 
-    pub fn new_entry(&self, project_name: &String, task: &String, quantity: Quantity, date: Option<DateTime<Local>>) -> Result<(), BillableServiceError> {
+    pub fn new_entry(&self, project_name: &String, task: &String, quantity: Quantity, date: Option<DateTime<Local>>) -> Result<(), BillableRepositoryError> {
         return self.repository.add_billable_entry(project_name, task, quantity, date)
             .map_err(|e|
                 NewEntry {

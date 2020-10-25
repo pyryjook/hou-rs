@@ -13,7 +13,7 @@ pub enum BillableUnit {
 
 #[derive(Debug, PartialEq)]
 pub struct Billable {
-    pub project_id: String,
+    pub project: String,
     pub task: String,
     pub quantity: Quantity,
     pub date: DateTime<Local>

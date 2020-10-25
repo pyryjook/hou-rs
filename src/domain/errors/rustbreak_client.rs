@@ -3,7 +3,7 @@ use serde::export::fmt::Debug;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub enum ProjectDataRepositoryError {
+pub enum RustbreakClientError {
     #[snafu(display("Could not read data from db: {}", source))]
     ReadFailed {
         source: rustbreak::RustbreakError,

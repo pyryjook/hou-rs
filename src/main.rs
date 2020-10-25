@@ -4,6 +4,7 @@ mod domain;
 mod handlers;
 mod repositories;
 mod services;
+mod clients;
 
 use clap::{Arg, App};
 use crate::constants::{FOR_COMMAND, PROJECT_NAME_ARG, WORKED_ON_COMMAND, TASK_ARG, TIME_ARG, DATE_ARG, INVOICE_COMMAND};

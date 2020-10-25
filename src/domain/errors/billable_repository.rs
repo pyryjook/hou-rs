@@ -2,15 +2,15 @@ use snafu::Snafu;
 use serde::export::fmt::Debug;
 
 use crate::domain::objects::Quantity;
-use crate::domain::errors::project_data_repository::ProjectDataRepositoryError;
+use crate::domain::errors::rustbreak_client::RustbreakClientError;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
-pub enum BillableServiceError {
+pub enum BillableRepositoryError {
     #[snafu(display("Could not add new billable entry: {}, {}", project_name, task))]
-    NewEntry {
+    Create {
         project_name: String,
         task: String,
-        source: ProjectDataRepositoryError
+        source: RustbreakClientError
     }
 }
